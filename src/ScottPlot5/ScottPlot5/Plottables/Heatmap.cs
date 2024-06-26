@@ -102,6 +102,36 @@ public class Heatmap(double[,] intensities) : IPlottable, IHasColorAxis
     }
 
     /// <summary>
+    /// If true, pixels in the final image will be interpolated to give the heatmap a smooth appearance.
+    /// If false, the heatmap will appear as individual rectangles with sharp edges.
+    /// </summary>
+    private bool _verticalSmooth { get; set; } = false;
+    public bool VerticalSmooth
+    {
+        get { return _verticalSmooth; }
+        set
+        {
+            _verticalSmooth = value;
+            Update();
+        }
+    }
+
+    /// <summary>
+    /// If true, pixels in the final image will be interpolated to give the heatmap a smooth appearance.
+    /// If false, the heatmap will appear as individual rectangles with sharp edges.
+    /// </summary>
+    private bool _horizontalSmooth { get; set; } = false;
+    public bool HorizontalSmooth
+    {
+        get { return _horizontalSmooth; }
+        set
+        {
+            _horizontalSmooth = value;
+            Update();
+        }
+    }
+
+    /// <summary>
     /// Actual extent of the heatmap bitmap after alignment has been applied
     /// </summary>
     private CoordinateRect AlignedExtent
@@ -386,6 +416,18 @@ public class Heatmap(double[,] intensities) : IPlottable, IHasColorAxis
         if (Bitmap is null)
             Update(); // automatically generate the bitmap on first render if it was not generated manually
 
+        if (VerticalSmooth)
+        {
+            SmoothVerticalRender(rp);
+            return;
+        }
+
+        if (HorizontalSmooth)
+        {
+            SmoothHorizontalRender(rp);
+            return;
+        }
+
         using SKPaint paint = new()
         {
             FilterQuality = Smooth ? SKFilterQuality.High : SKFilterQuality.None
@@ -394,5 +436,64 @@ public class Heatmap(double[,] intensities) : IPlottable, IHasColorAxis
         SKRect rect = Axes.GetPixelRect(AlignedExtent).ToSKRect();
 
         rp.Canvas.DrawBitmap(Bitmap, rect, paint);
+
+    }
+
+
+    public virtual void SmoothVerticalRender(RenderPack rp)
+    {
+        if (Bitmap is null)
+            Update(); // automatically generate the bitmap on first render if it was not generated manually
+
+        // Intermediate bitmap for vertical scaling
+        SKRect finalRect = Axes.GetPixelRect(AlignedExtent).ToSKRect();
+        SKBitmap intermediateBitmap = new SKBitmap(Bitmap.Width, (int)finalRect.Height);
+
+        using (SKCanvas intermediateCanvas = new SKCanvas(intermediateBitmap))
+        {
+            using (SKPaint paintVertical = new SKPaint())
+            {
+                paintVertical.FilterQuality = SKFilterQuality.High; // Apply high-quality filtering vertically
+                SKRect sourceRect = new SKRect(0, 0, Bitmap.Width, Bitmap.Height);
+                SKRect destRect = new SKRect(0, 0, intermediateBitmap.Width, intermediateBitmap.Height);
+                intermediateCanvas.DrawBitmap(Bitmap, sourceRect, destRect, paintVertical);
+            }
+        }
+
+        // Final render with horizontal scaling
+        using (SKPaint paintVertical = new SKPaint())
+        {
+            paintVertical.FilterQuality = SKFilterQuality.None; // Apply no filtering horizontally
+            rp.Canvas.DrawBitmap(intermediateBitmap, finalRect, paintVertical);
+        }
+    }
+
+    public virtual void SmoothHorizontalRender(RenderPack rp)
+    {
+        if (Bitmap is null)
+            Update(); // automatically generate the bitmap on first render if it was not generated manually
+
+        // Intermediate bitmap for horizontal scaling
+        SKRect finalRect = Axes.GetPixelRect(AlignedExtent).ToSKRect();
+        SKBitmap intermediateBitmap = new SKBitmap((int)finalRect.Width, Bitmap.Height);
+
+        using (SKCanvas intermediateCanvas = new SKCanvas(intermediateBitmap))
+        {
+            using (SKPaint paintHorizontal = new SKPaint())
+            {
+                paintHorizontal.FilterQuality = SKFilterQuality.High; // Apply high-quality filtering horizontally
+                SKRect sourceRect = new SKRect(0, 0, Bitmap.Width, Bitmap.Height);
+                SKRect destRect = new SKRect(0, 0, intermediateBitmap.Width, intermediateBitmap.Height);
+                intermediateCanvas.DrawBitmap(Bitmap, sourceRect, destRect, paintHorizontal);
+            }
+        }
+
+        // Final render with vertical scaling
+        using (SKPaint paintVertical = new SKPaint())
+        {
+            paintVertical.FilterQuality = SKFilterQuality.None; // Apply no filtering vertically
+            rp.Canvas.DrawBitmap(intermediateBitmap, finalRect, paintVertical);
+        }
+
     }
 }
